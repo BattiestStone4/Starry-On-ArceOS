@@ -23,7 +23,7 @@ use axsync::Mutex;
 
 #[no_mangle]
 fn main() {
-    loader::list_apps();
+    //loader::list_apps();
     let testcases = option_env!("AX_TESTCASES_LIST")
         .unwrap_or_else(|| "Please specify the testcases list by making user_apps")
         .split(',')
