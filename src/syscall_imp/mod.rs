@@ -55,6 +55,7 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         Sysno::sched_yield => sys_sched_yield() as isize,
         Sysno::nanosleep => sys_nanosleep(tf.arg0() as _, tf.arg1() as _) as _,
         Sysno::getpid => sys_getpid() as isize,
+        Sysno::getppid => sys_getppid() as isize,
         Sysno::exit => sys_exit(tf.arg0() as _),
         Sysno::gettimeofday => sys_get_time_of_day(tf.arg0() as _) as _,
         Sysno::getcwd => sys_getcwd(tf.arg0() as _, tf.arg1() as _) as _,
@@ -67,6 +68,7 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
             tf.arg3() as _,
             tf.arg4() as _,
         ) as _,
+        Sysno::wait4 => sys_wait4(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _) as _,
         #[cfg(target_arch = "x86_64")]
         Sysno::arch_prctl => sys_arch_prctl(tf.arg0() as _, tf.arg1() as _),
         Sysno::set_tid_address => sys_set_tid_address(tf.arg0() as _),

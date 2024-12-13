@@ -1,12 +1,15 @@
-use alloc::{string::String, sync::Arc};
+use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use axerrno::AxResult;
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 
 use axhal::arch::{UspaceContext, TrapFrame};
 use axmm::AddrSpace;
 use axsync::Mutex;
 use axtask::{current, AxTaskRef, CurrentTask, TaskExtRef, TaskId, TaskInner};
-use crate::flags::CloneFlags;
+use crate::flags::{CloneFlags, WaitStatus};
+
+/// Map from process id to arc pointer of process
+pub static PID2TASK: Mutex<BTreeMap<u64, AxTaskRef>> = Mutex::new(BTreeMap::new());
 
 
 /// Task extended data for the monolithic kernel.
@@ -15,6 +18,12 @@ pub struct TaskExt {
     pub proc_id: u64,
     /// The parent process ID.
     pub parent_id: AtomicU64,
+    /// children process
+    pub children: Mutex<Vec<AxTaskRef>>,
+    /// process status
+    pub is_zombie: AtomicBool,
+    /// exit code
+    pub exit_code: AtomicI32,
     /// The clear thread tid field
     ///
     /// See <https://manpages.debian.org/unstable/manpages-dev/set_tid_address.2.en.html#clear_child_tid>
@@ -32,6 +41,9 @@ impl TaskExt {
         Self {
             proc_id: 233,
             parent_id: AtomicU64::new(1),
+            children: Mutex::new(Vec::new()),
+            is_zombie: AtomicBool::new(false),
+            exit_code: AtomicI32::new(0),
             uctx,
             clear_child_tid: AtomicU64::new(0),
             aspace,
@@ -84,7 +96,12 @@ impl TaskExt {
         }
         write_trapframe_to_kstack(new_task.get_kernel_stack_top().unwrap(), &trap_frame);
 
-        axtask::spawn_task(new_task);
+        let new_task_ref = axtask::spawn_task(new_task);
+        let exit_code = new_task_ref.join();
+        new_task_ref.task_ext().set_exit_code(exit_code.unwrap());
+        new_task_ref.task_ext().set_zombie(true);
+        
+        current_task.task_ext().children.lock().push(new_task_ref);
 
         Ok(return_id)
         
@@ -102,6 +119,32 @@ impl TaskExt {
 
     pub(crate) fn get_parent(&self) -> u64 {
         self.parent_id.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_parent(&self, parent_id: u64) {
+        self.parent_id.store(parent_id, Ordering::Release);
+    }
+
+    pub(crate) fn get_zombie(&self) -> bool {
+        self.is_zombie.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_zombie(&self, status: bool) {
+        self.is_zombie.store(status, Ordering::Release)
+    }
+
+    pub(crate) fn get_exit_code(&self) -> i32 {
+       self.exit_code.load(Ordering::Acquire) 
+    }
+    pub(crate) fn set_exit_code(&self, exit_code: i32) {
+        self.exit_code.store(exit_code, Ordering::Release)
+    }
+
+    pub(crate) fn get_code_if_exit(&self) -> Option<i32> {
+        if self.get_zombie() {
+            return Some(self.get_exit_code());
+        }
+        None
     }
 }
 
@@ -142,3 +185,55 @@ pub fn read_trapframe_from_kstack(kstack_top: usize) -> TrapFrame {
     let trap_frame_ptr = (kstack_top - trap_frame_size) as *mut TrapFrame;
     unsafe { *trap_frame_ptr }
 }
+
+pub fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
+    let curr_task = current();
+    let mut exit_task_id: usize = 0;
+    let mut answer_id: u64 = 0;
+    let mut answer_status = WaitStatus::NotExist;
+
+    for (index, child) in curr_task.task_ext().children.lock().iter().enumerate() {
+        if pid <= 0 {
+            if pid == 0 {
+                axlog::warn!("Don't support for process group.");
+            }
+
+            answer_status = WaitStatus::Running;
+            if let Some(exit_code) = child.task_ext().get_code_if_exit() {
+                answer_status = WaitStatus::Exited;
+                info!("wait pid _{}_ with code _{}_", child.id().as_u64(), exit_code);
+                exit_task_id = index;
+                if !exit_code_ptr.is_null() {
+                    unsafe {
+                        *exit_code_ptr = exit_code << 8;
+                    }
+                }
+                answer_id = child.id().as_u64();
+                break;
+            }
+        } else if child.id().as_u64() == pid as u64 {
+            if let Some(exit_code) = child.task_ext().get_code_if_exit() {
+                answer_status = WaitStatus::Exited;
+                info!("wait pid _{}_ with code _{:?}_", child.id().as_u64(), exit_code);
+                exit_task_id = index;
+                if !exit_code_ptr.is_null() {
+                    unsafe {
+                        *exit_code_ptr = exit_code << 8;
+                    }
+                }
+                answer_id = child.id().as_u64();
+            } else {
+                answer_status = WaitStatus::Running;
+            }
+            break;
+        }
+    }
+
+    if answer_status == WaitStatus::Exited {
+        curr_task.task_ext().children.lock().remove(exit_task_id);
+        return Ok(answer_id);
+    }
+    Err(answer_status)
+}
+
+

@@ -1,3 +1,5 @@
+use core::ffi::c_int;
+
 use arceos_posix_api::{self as api};
 use axtask::{current, TaskExtRef};
 use num_enum::TryFromPrimitive;
@@ -27,6 +29,12 @@ enum ArchPrctlCode {
 
 pub(crate) fn sys_getpid() -> i32 {
     api::sys_getpid()
+}
+
+pub(crate) fn sys_getppid() -> i32 {
+    syscall_body!(sys_getppid, {
+        Ok(axtask::current().task_ext().get_parent() as c_int)
+    })
 }
 
 pub(crate) fn sys_exit(status: i32) -> ! {

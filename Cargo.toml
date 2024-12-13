@@ -18,6 +18,7 @@ num_enum = { version = "0.7", default-features = false }
 syscalls = { version = "0.6", default-features = false }
 
 axfs = { path = "./.arceos/modules/axfs"}
+axlog = { path = "./.arceos/modules/axlog" }
 axstd = { git = "https://github.com/arceos-org/arceos.git", features = ["paging"] }
 axhal = { git = "https://github.com/arceos-org/arceos.git", features = ["uspace"] }
 axmm = { git = "https://github.com/arceos-org/arceos.git" }

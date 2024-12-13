@@ -1,6 +1,7 @@
-use axtask::TaskExtRef;
+use axstd::thread::yield_now;
+use axtask::{current, TaskExtRef};
 
-use crate::syscall_body;
+use crate::{flags::{WaitFlags, WaitStatus}, syscall_body, task::wait_pid};
 
 pub(crate) fn sys_clone(
     flags: usize, 
@@ -28,4 +29,36 @@ pub(crate) fn sys_clone(
         }
     })
     
+}
+
+pub(crate) fn sys_wait4(pid: i32, exit_code_ptr: *mut i32, option: u32) -> isize {
+    let option_flag = WaitFlags::from_bits(option as u32).unwrap();
+    syscall_body!(sys_wait4, {
+        loop {
+            let answer = unsafe { wait_pid(pid, exit_code_ptr) };
+            match answer {
+                Ok(pid) => {
+                    return Ok(pid as isize);
+                }
+                Err(status) => {
+                    match status {
+                        WaitStatus::NotExist => {
+                            return Err(axerrno::LinuxError::ECHILD);
+                        }
+                        WaitStatus::Running => {
+                            if option_flag.contains(WaitFlags::WNOHANG) {
+                                return Ok(0);
+                            }
+                            else {
+                                yield_now();
+                            }
+                        }
+                        _ => {
+                            panic!("Shouldn't reach here!");
+                        }
+                    }
+                }
+            }
+        }
+    })
 }
