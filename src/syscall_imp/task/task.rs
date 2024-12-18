@@ -20,7 +20,7 @@ pub(crate) fn sys_clone(
             Some(user_stack)
         };
     
-        let curr_task = axtask::current();
+        let curr_task = current();
     
         if let Ok(new_task_id) = curr_task.task_ext().clone_task(flags, stack, ptid, tls, ctid) {
             Ok(new_task_id as isize) 
@@ -35,7 +35,7 @@ pub(crate) fn sys_wait4(pid: i32, exit_code_ptr: *mut i32, option: u32) -> isize
     let option_flag = WaitFlags::from_bits(option as u32).unwrap();
     syscall_body!(sys_wait4, {
         loop {
-            let answer = unsafe { wait_pid(pid, exit_code_ptr) };
+            let answer = wait_pid(pid, exit_code_ptr);
             match answer {
                 Ok(pid) => {
                     return Ok(pid as isize);

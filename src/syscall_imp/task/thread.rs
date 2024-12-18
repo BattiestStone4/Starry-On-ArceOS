@@ -28,7 +28,9 @@ enum ArchPrctlCode {
 }
 
 pub(crate) fn sys_getpid() -> i32 {
-    api::sys_getpid()
+    syscall_body!(sys_getpid, {
+        Ok(axtask::current().task_ext().proc_id as c_int)
+    })
 }
 
 pub(crate) fn sys_getppid() -> i32 {

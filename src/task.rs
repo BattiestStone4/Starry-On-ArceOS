@@ -1,11 +1,11 @@
 use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
 use axerrno::AxResult;
-use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use axhal::arch::{UspaceContext, TrapFrame};
 use axmm::AddrSpace;
 use axsync::Mutex;
-use axtask::{current, AxTaskRef, CurrentTask, TaskExtRef, TaskId, TaskInner};
+use axtask::{current, AxTaskRef, TaskExtRef, TaskInner};
 use crate::flags::{CloneFlags, WaitStatus};
 
 /// Map from process id to arc pointer of process
@@ -15,15 +15,11 @@ pub static PID2TASK: Mutex<BTreeMap<u64, AxTaskRef>> = Mutex::new(BTreeMap::new(
 /// Task extended data for the monolithic kernel.
 pub struct TaskExt {
     /// The process ID.
-    pub proc_id: u64,
+    pub proc_id: usize,
     /// The parent process ID.
     pub parent_id: AtomicU64,
     /// children process
     pub children: Mutex<Vec<AxTaskRef>>,
-    /// process status
-    pub is_zombie: AtomicBool,
-    /// exit code
-    pub exit_code: AtomicI32,
     /// The clear thread tid field
     ///
     /// See <https://manpages.debian.org/unstable/manpages-dev/set_tid_address.2.en.html#clear_child_tid>
@@ -37,13 +33,11 @@ pub struct TaskExt {
 }
 
 impl TaskExt {
-    pub const fn new(uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>) -> Self {
+    pub const fn new(proc_id: usize, uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>) -> Self {
         Self {
-            proc_id: 233,
+            proc_id,
             parent_id: AtomicU64::new(1),
             children: Mutex::new(Vec::new()),
-            is_zombie: AtomicBool::new(false),
-            exit_code: AtomicI32::new(0),
             uctx,
             clear_child_tid: AtomicU64::new(0),
             aspace,
@@ -59,48 +53,42 @@ impl TaskExt {
         ctid: usize,
     ) -> AxResult<u64> {
         let clone_flags = CloneFlags::from_bits((flags & !0x3f) as u32).unwrap();
-        let aspace = self.aspace.clone();
-        let uctx = self.uctx;
         
-        let process_id = if clone_flags.contains(CloneFlags::CLONE_THREAD) {
-            self.proc_id
-        } else {
-            TaskId::new().as_u64()
-        };
-
-        let parent_id = if clone_flags.contains(CloneFlags::CLONE_PARENT) {
-            self.get_parent()
-        } else {
-            self.proc_id
-        };
-
         let mut new_task = TaskInner::new(
-            || {},
-            String::from("cloned"),
+            || {
+                let curr = axtask::current();
+                let kstack_top = curr.kernel_stack_top().unwrap();
+                info!(
+                    "Enter user space: entry={:#x}, ustack={:#x}, kstack={:#x}",
+                    curr.task_ext().uctx.get_ip(),
+                    curr.task_ext().uctx.get_sp(),
+                    kstack_top,
+                );
+                unsafe { curr.task_ext().uctx.enter_uspace(kstack_top) };
+            },
+            String::from(current().id_name()),
             crate::config::KERNEL_STACK_SIZE
         );
-        
-        new_task.ctx_mut().set_page_table_root(aspace.lock().page_table_root());
-        new_task.init_task_ext(TaskExt::new(uctx, aspace));
-
-        let return_id: u64 = new_task.id().as_u64();
 
         let current_task = current();
+
+        let new_aspace = current_task.task_ext().aspace.clone();
+        new_task.ctx_mut().set_page_table_root(new_aspace.lock().page_table_root());
 
         let mut trap_frame = 
             read_trapframe_from_kstack(current_task.get_kernel_stack_top().unwrap());
         trap_frame.set_ret_code(0);
+        trap_frame.sepc += 4;
 
         if let Some(stack) = stack {
             trap_frame.set_user_sp(stack);
         }
-        write_trapframe_to_kstack(new_task.get_kernel_stack_top().unwrap(), &trap_frame);
 
+        let new_uctx = UspaceContext::from(&trap_frame);
+
+        let return_id: u64 = new_task.id().as_u64();
+        new_task.init_task_ext(TaskExt::new(return_id as usize, new_uctx, new_aspace));
         let new_task_ref = axtask::spawn_task(new_task);
-        let exit_code = new_task_ref.join();
-        new_task_ref.task_ext().set_exit_code(exit_code.unwrap());
-        new_task_ref.task_ext().set_zombie(true);
-        
         current_task.task_ext().children.lock().push(new_task_ref);
 
         Ok(return_id)
@@ -125,27 +113,6 @@ impl TaskExt {
         self.parent_id.store(parent_id, Ordering::Release);
     }
 
-    pub(crate) fn get_zombie(&self) -> bool {
-        self.is_zombie.load(Ordering::Acquire)
-    }
-
-    pub(crate) fn set_zombie(&self, status: bool) {
-        self.is_zombie.store(status, Ordering::Release)
-    }
-
-    pub(crate) fn get_exit_code(&self) -> i32 {
-       self.exit_code.load(Ordering::Acquire) 
-    }
-    pub(crate) fn set_exit_code(&self, exit_code: i32) {
-        self.exit_code.store(exit_code, Ordering::Release)
-    }
-
-    pub(crate) fn get_code_if_exit(&self) -> Option<i32> {
-        if self.get_zombie() {
-            return Some(self.get_exit_code());
-        }
-        None
-    }
 }
 
 axtask::def_task_ext!(TaskExt);
@@ -168,7 +135,7 @@ pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext) -> Ax
     );
     task.ctx_mut()
         .set_page_table_root(aspace.lock().page_table_root());
-    task.init_task_ext(TaskExt::new(uctx, aspace));
+    task.init_task_ext(TaskExt::new(task.id().as_u64() as usize, uctx, aspace));
     axtask::spawn_task(task)
 }
 
@@ -199,7 +166,8 @@ pub fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
             }
 
             answer_status = WaitStatus::Running;
-            if let Some(exit_code) = child.task_ext().get_code_if_exit() {
+            if child.state() == axtask::TaskState::Exited {
+                let exit_code = child.exit_code();
                 answer_status = WaitStatus::Exited;
                 info!("wait pid _{}_ with code _{}_", child.id().as_u64(), exit_code);
                 exit_task_id = index;
@@ -212,7 +180,7 @@ pub fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
                 break;
             }
         } else if child.id().as_u64() == pid as u64 {
-            if let Some(exit_code) = child.task_ext().get_code_if_exit() {
+            if let Some(exit_code) = child.join() {
                 answer_status = WaitStatus::Exited;
                 info!("wait pid _{}_ with code _{:?}_", child.id().as_u64(), exit_code);
                 exit_task_id = index;
@@ -227,6 +195,10 @@ pub fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
             }
             break;
         }
+    }
+
+    if answer_status == WaitStatus::Running {
+        axtask::yield_now();
     }
 
     if answer_status == WaitStatus::Exited {
