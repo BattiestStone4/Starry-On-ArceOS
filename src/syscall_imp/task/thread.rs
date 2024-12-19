@@ -1,6 +1,5 @@
 use core::ffi::c_int;
 
-use arceos_posix_api::{self as api};
 use axtask::{current, TaskExtRef};
 use num_enum::TryFromPrimitive;
 

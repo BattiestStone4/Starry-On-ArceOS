@@ -1,9 +1,12 @@
 use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
+use arceos_posix_api::FD_TABLE;
 use axerrno::AxResult;
+use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
 use core::sync::atomic::{AtomicU64, Ordering};
 
 use axhal::arch::{UspaceContext, TrapFrame};
 use axmm::AddrSpace;
+use axns::{AxNamespace, AxNamespaceIf};
 use axsync::Mutex;
 use axtask::{current, AxTaskRef, TaskExtRef, TaskInner};
 use crate::flags::{CloneFlags, WaitStatus};
@@ -30,10 +33,12 @@ pub struct TaskExt {
     pub uctx: UspaceContext,
     /// The virtual memory address space.
     pub aspace: Arc<Mutex<AddrSpace>>,
+    /// The resource namespace
+    pub ns: AxNamespace,
 }
 
 impl TaskExt {
-    pub const fn new(proc_id: usize, uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>) -> Self {
+    pub fn new(proc_id: usize, uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>) -> Self {
         Self {
             proc_id,
             parent_id: AtomicU64::new(1),
@@ -41,6 +46,7 @@ impl TaskExt {
             uctx,
             clear_child_tid: AtomicU64::new(0),
             aspace,
+            ns: AxNamespace::new_thread_local(),
         }
     }
     
@@ -48,11 +54,11 @@ impl TaskExt {
         &self,
         flags: usize,
         stack: Option<usize>,
-        ptid: usize,
-        tls: usize,
-        ctid: usize,
+        _ptid: usize,
+        _tls: usize,
+        _ctid: usize,
     ) -> AxResult<u64> {
-        let clone_flags = CloneFlags::from_bits((flags & !0x3f) as u32).unwrap();
+        let _clone_flags = CloneFlags::from_bits((flags & !0x3f) as u32).unwrap();
         
         let mut new_task = TaskInner::new(
             || {
@@ -87,7 +93,13 @@ impl TaskExt {
         let new_uctx = UspaceContext::from(&trap_frame);
 
         let return_id: u64 = new_task.id().as_u64();
-        new_task.init_task_ext(TaskExt::new(return_id as usize, new_uctx, new_aspace));
+        let new_task_ext = TaskExt::new(
+            return_id as usize, 
+            new_uctx, 
+            new_aspace
+        );
+        new_task_ext.ns_init_new();
+        new_task.init_task_ext(new_task_ext);
         let new_task_ref = axtask::spawn_task(new_task);
         current_task.task_ext().children.lock().push(new_task_ref);
 
@@ -113,6 +125,27 @@ impl TaskExt {
         self.parent_id.store(parent_id, Ordering::Release);
     }
 
+    pub(crate) fn ns_init_new(&self) {
+        FD_TABLE.deref_from(&self.ns).init_new(FD_TABLE.copy_inner());
+        CURRENT_DIR.deref_from(&self.ns).init_new(CURRENT_DIR.copy_inner());
+        CURRENT_DIR_PATH.deref_from(&self.ns).init_new(CURRENT_DIR_PATH.copy_inner());
+    }
+
+}
+
+struct AxNamespaceImpl;
+
+#[crate_interface::impl_interface]
+impl AxNamespaceIf for AxNamespaceImpl {
+    #[inline(never)]
+    fn current_namespace_base() -> *mut u8 {
+        let current = axtask::current();
+        // Safety: We only check whether the task extended data is null and do not access it.
+        if unsafe { current.task_ext_ptr() }.is_null() {
+            return axns::AxNamespace::global().base();
+        }
+        current.task_ext().ns.base()
+    }
 }
 
 axtask::def_task_ext!(TaskExt);
@@ -136,6 +169,7 @@ pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext) -> Ax
     task.ctx_mut()
         .set_page_table_root(aspace.lock().page_table_root());
     task.init_task_ext(TaskExt::new(task.id().as_u64() as usize, uctx, aspace));
+    task.task_ext().ns_init_new();
     axtask::spawn_task(task)
 }
 
