@@ -22,6 +22,11 @@ pub fn load_user_app(app_name: &str) -> AxResult<(VirtAddr, VirtAddr, AddrSpace)
         VirtAddr::from_usize(config::USER_SPACE_BASE),
         config::USER_SPACE_SIZE,
     )?;
+    let (entry, ustack_pointer) = map_elf_sections(app_name, &mut uspace)?;
+    Ok((entry, ustack_pointer, uspace))
+}
+
+pub fn map_elf_sections(app_name: &str, uspace: &mut AddrSpace) -> Result<(VirtAddr, VirtAddr), axerrno::AxError> {
     let elf_info = loader::load_elf(app_name, uspace.base());
     for segement in elf_info.segments {
         debug!(
@@ -68,7 +73,7 @@ pub fn load_user_app(app_name: &str) -> AxResult<(VirtAddr, VirtAddr, AddrSpace)
     )?;
 
     uspace.write(VirtAddr::from_usize(ustack_pointer), stack_data.as_slice())?;
-    Ok((elf_info.entry, VirtAddr::from(ustack_pointer), uspace))
+    Ok((elf_info.entry, VirtAddr::from(ustack_pointer)))
 }
 
 #[register_trap_handler(PAGE_FAULT)]

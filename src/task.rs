@@ -1,6 +1,6 @@
-use alloc::{collections::btree_map::BTreeMap, string::String, sync::Arc, vec::Vec};
+use alloc::{collections::btree_map::BTreeMap, string::{String, ToString}, sync::Arc, vec::Vec};
 use arceos_posix_api::FD_TABLE;
-use axerrno::AxResult;
+use axerrno::{AxError, AxResult};
 use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -242,4 +242,33 @@ pub fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
     Err(answer_status)
 }
 
+pub fn exec(program_name: &str) -> AxResult<()> {
+    let current_task = current();
 
+    let program_name = program_name.to_string();
+
+    let mut aspace = current_task.task_ext().aspace.lock();
+    if Arc::strong_count(&current_task.task_ext().aspace) != 1 {
+        warn!("Address space is shared by multiple tasks, exec is not supported.");
+        return Err(AxError::Unsupported);
+    }
+
+    aspace.unmap_user_areas()?;
+    axhal::arch::flush_tlb(None);
+
+    let (entry_point, user_stack_base) = crate::mm::map_elf_sections(&program_name, &mut aspace)
+        .map_err(|_| {
+            error!("Failed to load app {}", program_name);
+            AxError::NotFound
+        })?;
+    current_task.set_name(&program_name);
+
+    let task_ext = unsafe { &mut *(current_task.task_ext_ptr() as *mut TaskExt) };
+    task_ext.uctx = UspaceContext::new(entry_point.as_usize(), user_stack_base, 0);
+
+    unsafe {
+        task_ext
+            .uctx
+            .enter_uspace(current_task.kernel_stack_top().expect("No kernel stack top"));
+    }
+}

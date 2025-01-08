@@ -1,3 +1,5 @@
+use core::ffi::c_char;
+
 use axstd::thread::yield_now;
 use axtask::{current, TaskExtRef};
 
@@ -61,4 +63,40 @@ pub(crate) fn sys_wait4(pid: i32, exit_code_ptr: *mut i32, option: u32) -> isize
             }
         }
     })
+}
+
+pub fn sys_execve(path: *const c_char, argv: *const usize, envp: *const usize) -> isize {
+    let path_str = match arceos_posix_api::char_ptr_to_str(path) {
+        Ok(path) => path,
+        Err(err) => {
+            warn!("Failed to convert path to str: {:?}", err);
+            return -1;
+        }
+    };
+
+    if path_str.split('/').filter(|s| !s.is_empty()).count() > 1 {
+        info!("Multi-level directories are not supported");
+        return -1;
+    }
+
+    let argv_valid = unsafe { argv.is_null() || *argv == 0 };
+    let envp_valid = unsafe { envp.is_null() || *envp == 0 };
+
+    if !argv_valid {
+        info!("argv is not supported");
+    }
+
+    if !envp_valid {
+        info!("envp is not supported");
+    }
+
+    match crate::task::exec(path_str) {
+        Ok(_) => {
+            unreachable!("exec should not return");
+        },
+        Err(err) => {
+            error!("Failed to exec: {:?}", err);
+            -1
+        }
+    }
 }

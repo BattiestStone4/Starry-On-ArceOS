@@ -1,7 +1,5 @@
 use core::ffi::{c_char, c_int, c_void};
 
-use xmas_elf::P32;
-
 use crate::syscall_body;
 
 /// The ioctl() system call manipulates the underlying device parameters
