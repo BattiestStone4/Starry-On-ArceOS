@@ -78,6 +78,13 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         Sysno::execve => sys_execve(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _) as _,
         Sysno::openat => sys_openat(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _, tf.arg3() as _) as _,
         Sysno::getdents64 => sys_getdents64(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
+        Sysno::linkat => sys_linkat(
+            tf.arg0() as _, 
+            tf.arg1() as _, 
+            tf.arg2() as _, 
+            tf.arg3() as _, 
+            tf.arg4() as _) as _,
+        Sysno::unlinkat => sys_unlinkat(tf.arg0()as _, tf.arg1() as _, tf.arg2() as _),
         #[cfg(target_arch = "x86_64")]
         Sysno::arch_prctl => sys_arch_prctl(tf.arg0() as _, tf.arg1() as _),
         Sysno::set_tid_address => sys_set_tid_address(tf.arg0() as _),

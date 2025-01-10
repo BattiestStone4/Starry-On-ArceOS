@@ -1,7 +1,8 @@
 use core::ffi::{c_char, c_int, c_void};
 
 use alloc::string::ToString;
-use axtask::{current, CurrentTask, TaskExtRef};
+use axerrno::AxError;
+use axtask::{current, TaskExtRef};
 
 use crate::syscall_body;
 
@@ -227,6 +228,76 @@ pub(crate) fn sys_getdents64(fd: i32, buf: *mut c_void, len: usize) -> isize {
             }
 
             Ok(total_size as isize)
+        })
+        .unwrap_or(-1)
+}
+
+/// create a link from new_path to old_path
+/// old_path: old file path
+/// new_path: new file path
+/// flags: link flags
+/// return value: return 0 when success, else return -1.
+pub(crate) fn sys_linkat(
+    old_dirfd: i32,
+    old_path: *const u8,
+    new_dirfd: i32,
+    new_path: *const u8,
+    flags: i32
+) -> i32 {
+    if flags != 0 {
+        warn!("Unsupported flags: {flags}");
+    }
+
+    // handle old path
+    arceos_posix_api::handle_file_path(old_dirfd as isize, Some(old_path), false)
+        .inspect_err(|err| warn!("Failed to convert new path: {err:?}"))
+        .and_then(|old_path| {
+            //handle new path
+            arceos_posix_api::handle_file_path(new_dirfd as isize, Some(new_path), false)
+                .inspect_err(|err| warn!("Failed to convert new path: {err:?}"))
+                .map(|new_path| (old_path, new_path))
+        })
+        .and_then(|(old_path, new_path)| {
+            arceos_posix_api::HARDLINK_MANAGER
+                .create_link(&new_path, &old_path)
+                .inspect_err(|err| warn!("Failed to create link: {err:?}"))
+                .map_err(Into::into)
+        })
+        .map(|_| 0)
+        .unwrap_or(-1)
+}
+
+/// remove link of specific file (can be used to delete file)
+/// dir_fd: the directory of link to be removed
+/// path: the name of link to be removed
+/// flags: can be 0 or AT_REMOVEDIR
+/// return 0 when success, else return -1
+pub fn sys_unlinkat(dir_fd: isize, path: *const u8, flags: usize) -> isize {
+    const AT_REMOVEDIR: usize = 0x200;
+
+    arceos_posix_api::handle_file_path(dir_fd, Some(path), false)
+        .inspect_err(|e| warn!("unlinkat error: {:?}", e)) 
+        .and_then(|path| {
+            if flags == AT_REMOVEDIR {
+                axfs::api::remove_dir(path.as_str())
+                    .inspect_err(|e| warn!("unlinkat error: {:?}", e)) 
+                    .map(|_| 0)
+            } else {
+                axfs::api::metadata(path.as_str()).and_then(|metadata| {
+                    if metadata.is_dir() {
+                        Err(AxError::IsADirectory)
+                    } else {
+                        debug!("unlink file: {:?}", path);
+                        arceos_posix_api::HARDLINK_MANAGER
+                            .remove_link(&path)
+                            .ok_or_else(|| {
+                                debug!("unlink file error");
+                                AxError::NotFound
+                            })
+                            .map(|_| 0)
+                    }
+                })
+            }
         })
         .unwrap_or(-1)
 }
