@@ -3,6 +3,7 @@ mod mm;
 mod task;
 mod time;
 mod pipe;
+mod system_info;
 
 use axerrno::LinuxError;
 use axhal::{
@@ -10,6 +11,7 @@ use axhal::{
     trap::{register_trap_handler, SYSCALL},
 };
 use syscalls::Sysno;
+use system_info::sys_uname;
 
 use self::fs::*;
 use self::mm::*;
@@ -85,6 +87,7 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
             tf.arg3() as _, 
             tf.arg4() as _) as _,
         Sysno::unlinkat => sys_unlinkat(tf.arg0()as _, tf.arg1() as _, tf.arg2() as _),
+        Sysno::uname => sys_uname(tf.arg0() as _) as _,
         #[cfg(target_arch = "x86_64")]
         Sysno::arch_prctl => sys_arch_prctl(tf.arg0() as _, tf.arg1() as _),
         Sysno::set_tid_address => sys_set_tid_address(tf.arg0() as _),
