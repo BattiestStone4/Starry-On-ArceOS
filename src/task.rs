@@ -2,14 +2,14 @@ use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
 use arceos_posix_api::FD_TABLE;
 use axerrno::{AxError, AxResult};
 use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::{cell::UnsafeCell, sync::atomic::{AtomicU64, Ordering}};
 
-use axhal::arch::{UspaceContext, TrapFrame};
+use axhal::{arch::{TrapFrame, UspaceContext}, time::{monotonic_time_nanos, NANOS_PER_MICROS, NANOS_PER_SEC}};
 use axmm::AddrSpace;
 use axns::{AxNamespace, AxNamespaceIf};
 use axsync::Mutex;
 use axtask::{current, AxTaskRef, TaskExtRef, TaskInner};
-use crate::flags::{CloneFlags, WaitStatus};
+use crate::ctypes::{CloneFlags, WaitStatus, TimeStat};
 
 
 /// Task extended data for the monolithic kernel.
@@ -32,6 +32,8 @@ pub struct TaskExt {
     pub aspace: Arc<Mutex<AddrSpace>>,
     /// The resource namespace
     pub ns: AxNamespace,
+    /// The time statistics
+    pub time: UnsafeCell<TimeStat>,
 }
 
 impl TaskExt {
@@ -44,6 +46,7 @@ impl TaskExt {
             clear_child_tid: AtomicU64::new(0),
             aspace,
             ns: AxNamespace::new_thread_local(),
+            time: TimeStat::new().into(),
         }
     }
     
@@ -127,6 +130,39 @@ impl TaskExt {
         FD_TABLE.deref_from(&self.ns).init_new(FD_TABLE.copy_inner());
         CURRENT_DIR.deref_from(&self.ns).init_new(CURRENT_DIR.copy_inner());
         CURRENT_DIR_PATH.deref_from(&self.ns).init_new(CURRENT_DIR_PATH.copy_inner());
+    }
+
+    pub(crate) fn time_stat_from_kernel_to_user(&self, current_tick: usize) {
+        let time = self.time.get();
+        unsafe {
+            (*time).switch_into_user_mode(current_tick);
+        }
+    }
+
+    pub(crate) fn time_stat_from_user_to_kernel(&self, current_tick: usize) {
+        let time = self.time.get();
+        unsafe {
+            (*time).switch_into_kernel_mode(current_tick);
+        }
+    }
+
+    pub(crate) fn time_stat_when_switch_from(&self, current_tick: usize) {
+        let time = self.time.get();
+        unsafe {
+            (*time).switch_from_old_task(current_tick);
+        }
+    }
+
+    pub(crate) fn time_stat_when_switch_to(&self, current_tick: usize) {
+        let time = self.time.get();
+        unsafe {
+            (*time).switch_to_new_task( current_tick);
+        }
+    }
+
+    pub(crate) fn time_stat_output(&self) -> (usize, usize) {
+        let time = self.time.get();
+        unsafe { (*time).output() }
     }
 
 }
@@ -269,4 +305,25 @@ pub fn exec(program_name: &str) -> AxResult<()> {
             .uctx
             .enter_uspace(current_task.kernel_stack_top().expect("No kernel stack top"));
     }
+}
+
+pub fn time_stat_from_kernel_to_user() {
+    let curr_task = current();
+    curr_task.task_ext().time_stat_from_kernel_to_user(monotonic_time_nanos() as usize);
+}
+
+pub fn time_stat_from_user_to_kernel() {
+    let curr_task = current();
+    curr_task.task_ext().time_stat_from_user_to_kernel(monotonic_time_nanos() as usize);
+}
+
+pub fn time_stat_output() -> (usize, usize, usize, usize) {
+    let curr_task = current();
+    let (utime_ns, stime_ns) = curr_task.task_ext().time_stat_output();
+    (
+        utime_ns / NANOS_PER_SEC as usize,
+        utime_ns / NANOS_PER_MICROS as usize,
+        stime_ns / NANOS_PER_SEC as usize,
+        stime_ns / NANOS_PER_MICROS as usize,
+    )
 }

@@ -933,6 +933,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "numeric-enum-macro"
+version = "0.2.0"
+source = "git+https://github.com/mexus/numeric-enum-macro#20aef288b2ecd2381ab6627c2a6c9e0436d8c8ff"
+
+[[package]]
 name = "once_cell"
 version = "1.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1257,6 +1262,7 @@ dependencies = [
  "log",
  "memory_addr",
  "num_enum",
+ "numeric-enum-macro",
  "syscalls",
  "toml_edit",
  "x86",

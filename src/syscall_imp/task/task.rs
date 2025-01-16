@@ -3,7 +3,7 @@ use core::ffi::c_char;
 use axstd::thread::yield_now;
 use axtask::{current, TaskExtRef};
 
-use crate::{flags::{WaitFlags, WaitStatus}, syscall_body, task::wait_pid};
+use crate::{ctypes::{WaitFlags, WaitStatus}, syscall_body, task::wait_pid};
 
 pub(crate) fn sys_clone(
     flags: usize, 

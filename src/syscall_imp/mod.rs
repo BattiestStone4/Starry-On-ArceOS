@@ -13,6 +13,8 @@ use axhal::{
 use syscalls::Sysno;
 use system_info::sys_uname;
 
+use crate::task::{time_stat_from_kernel_to_user, time_stat_from_user_to_kernel};
+
 use self::fs::*;
 use self::mm::*;
 use self::task::*;
@@ -43,7 +45,8 @@ macro_rules! syscall_body {
 
 #[register_trap_handler(SYSCALL)]
 fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
-    match Sysno::from(syscall_num as u32) {
+    time_stat_from_user_to_kernel();
+    let ans = match Sysno::from(syscall_num as u32) {
         Sysno::read => sys_read(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
         Sysno::write => sys_write(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
         Sysno::mmap => sys_mmap(
@@ -90,6 +93,7 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         Sysno::uname => sys_uname(tf.arg0() as _) as _,
         Sysno::fstat => sys_fstat(tf.arg0() as _, tf.arg1() as _) as _,
         Sysno::munmap => sys_munmap(tf.arg0() as _, tf.arg1() as _) as _,
+        Sysno::times => sys_times(tf.arg0() as _) as _,
         #[cfg(target_arch = "x86_64")]
         Sysno::arch_prctl => sys_arch_prctl(tf.arg0() as _, tf.arg1() as _),
         Sysno::set_tid_address => sys_set_tid_address(tf.arg0() as _),
@@ -99,5 +103,7 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
             warn!("Unimplemented syscall: {}", syscall_num);
             axtask::exit(LinuxError::ENOSYS as _)
         }
-    }
+    };
+    time_stat_from_kernel_to_user();
+    ans
 }

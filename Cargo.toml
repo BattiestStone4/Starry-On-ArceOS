@@ -16,6 +16,7 @@ bitflags = "2.6"
 crate_interface = "0.1"
 kernel-elf-parser = "0.1.0"
 num_enum = { version = "0.7", default-features = false }
+numeric-enum-macro = { git = "https://github.com/mexus/numeric-enum-macro" }
 syscalls = { version = "0.6", default-features = false }
 
 axns = { git = "https://github.com/arceos-org/arceos.git", features = ["thread-local"]}
