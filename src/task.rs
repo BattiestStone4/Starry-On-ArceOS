@@ -1,4 +1,4 @@
-use alloc::{collections::btree_map::BTreeMap, string::{String, ToString}, sync::Arc, vec::Vec};
+use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
 use arceos_posix_api::FD_TABLE;
 use axerrno::{AxError, AxResult};
 use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
@@ -10,9 +10,6 @@ use axns::{AxNamespace, AxNamespaceIf};
 use axsync::Mutex;
 use axtask::{current, AxTaskRef, TaskExtRef, TaskInner};
 use crate::flags::{CloneFlags, WaitStatus};
-
-/// Map from process id to arc pointer of process
-pub static PID2TASK: Mutex<BTreeMap<u64, AxTaskRef>> = Mutex::new(BTreeMap::new());
 
 
 /// Task extended data for the monolithic kernel.
@@ -78,8 +75,9 @@ impl TaskExt {
 
         let current_task = current();
 
-        let new_aspace = current_task.task_ext().aspace.clone();
-        new_task.ctx_mut().set_page_table_root(new_aspace.lock().page_table_root());
+        let mut current_aspace = current_task.task_ext().aspace.lock();
+        let new_aspace = current_aspace.clone_or_err()?;
+        new_task.ctx_mut().set_page_table_root(new_aspace.page_table_root());
 
         let mut trap_frame = 
             read_trapframe_from_kstack(current_task.get_kernel_stack_top().unwrap());
@@ -96,7 +94,7 @@ impl TaskExt {
         let new_task_ext = TaskExt::new(
             return_id as usize, 
             new_uctx, 
-            new_aspace
+            Arc::new(Mutex::new(new_aspace))
         );
         new_task_ext.ns_init_new();
         new_task.init_task_ext(new_task_ext);

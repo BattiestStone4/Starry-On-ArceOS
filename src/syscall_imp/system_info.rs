@@ -22,7 +22,7 @@ impl Default for UtsName {
             release: Self::from_str("10.0.0"),
             version: Self::from_str("10.0.0"),
             machine: Self::from_str("10.0.0"),
-            domainname: Self::from_str("https://github.com/xingmin1/Starry-On-ArceOS/tree/oscomp")
+            domainname: Self::from_str("https://github.com/BattiestStone4/Starry-On-ArceOS")
         }
     }
 }
