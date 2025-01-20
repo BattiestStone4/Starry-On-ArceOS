@@ -34,10 +34,14 @@ pub struct TaskExt {
     pub ns: AxNamespace,
     /// The time statistics
     pub time: UnsafeCell<TimeStat>,
+    /// The user heap bottom
+    pub heap_bottom: AtomicU64,
+    /// The user heap top
+    pub heap_top: AtomicU64,
 }
 
 impl TaskExt {
-    pub fn new(proc_id: usize, uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>) -> Self {
+    pub fn new(proc_id: usize, uctx: UspaceContext, aspace: Arc<Mutex<AddrSpace>>, heap_bottom: u64) -> Self {
         Self {
             proc_id,
             parent_id: AtomicU64::new(1),
@@ -47,6 +51,8 @@ impl TaskExt {
             aspace,
             ns: AxNamespace::new_thread_local(),
             time: TimeStat::new().into(),
+            heap_bottom: AtomicU64::new(heap_bottom),
+            heap_top: AtomicU64::new(heap_bottom),
         }
     }
     
@@ -97,7 +103,8 @@ impl TaskExt {
         let new_task_ext = TaskExt::new(
             return_id as usize, 
             new_uctx, 
-            Arc::new(Mutex::new(new_aspace))
+            Arc::new(Mutex::new(new_aspace)),
+            0,
         );
         new_task_ext.ns_init_new();
         new_task.init_task_ext(new_task_ext);
@@ -146,23 +153,25 @@ impl TaskExt {
         }
     }
 
-    pub(crate) fn time_stat_when_switch_from(&self, current_tick: usize) {
-        let time = self.time.get();
-        unsafe {
-            (*time).switch_from_old_task(current_tick);
-        }
-    }
-
-    pub(crate) fn time_stat_when_switch_to(&self, current_tick: usize) {
-        let time = self.time.get();
-        unsafe {
-            (*time).switch_to_new_task( current_tick);
-        }
-    }
-
     pub(crate) fn time_stat_output(&self) -> (usize, usize) {
         let time = self.time.get();
         unsafe { (*time).output() }
+    }
+
+    pub(crate) fn get_heap_bottom(&self) -> u64 {
+        self.heap_bottom.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_heap_bottom(&self, bottom: u64) {
+        self.heap_bottom.store(bottom, Ordering::Release)
+    }
+
+    pub(crate) fn get_heap_top(&self) -> u64 {
+        self.heap_top.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn set_heap_top(&self, top: u64) {
+        self.heap_top.store(top, Ordering::Release)
     }
 
 }
@@ -184,7 +193,7 @@ impl AxNamespaceIf for AxNamespaceImpl {
 
 axtask::def_task_ext!(TaskExt);
 
-pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext) -> AxTaskRef {
+pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext, heap_bottom: u64) -> AxTaskRef {
     let mut task = TaskInner::new(
         || {
             let curr = axtask::current();
@@ -202,7 +211,7 @@ pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext) -> Ax
     );
     task.ctx_mut()
         .set_page_table_root(aspace.lock().page_table_root());
-    task.init_task_ext(TaskExt::new(task.id().as_u64() as usize, uctx, aspace));
+    task.init_task_ext(TaskExt::new(task.id().as_u64() as usize, uctx, aspace, heap_bottom));
     task.task_ext().ns_init_new();
     axtask::spawn_task(task)
 }
