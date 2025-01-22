@@ -8,4 +8,3 @@ apps/*/build/
 **/target/
 apps/**/Cargo.lock
 testsuits-for-oskernel/
-testcase_list

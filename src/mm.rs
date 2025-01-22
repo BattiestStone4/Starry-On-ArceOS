@@ -1,4 +1,4 @@
-use alloc::string::ToString;
+use alloc::{string::ToString, vec};
 
 use axerrno::AxResult;
 use axhal::{
@@ -57,9 +57,14 @@ pub fn map_elf_sections(app_name: &str, uspace: &mut AddrSpace) -> Result<(VirtA
         "Mapping user stack: {:#x?} -> {:#x?}",
         ustack_start, ustack_end
     );
+    let mut args = vec![app_name.to_string()];
+    if ["mount", "umount"].contains(&app_name) {
+        args.push("/vda2".to_string());
+    }
+
     // FIXME: Add more arguments and environment variables
     let (stack_data, ustack_pointer) = kernel_elf_parser::get_app_stack_region(
-        &[app_name.to_string()],
+        &args,
         &[],
         &elf_info.auxv,
         ustack_start,
