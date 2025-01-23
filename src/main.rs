@@ -33,7 +33,7 @@ fn main() {
         .filter(|&x| !x.is_empty());
 
     let _ = axfs::fops::File::open(
-        "/dev/vda2",
+        "/vda2",
         &axfs::fops::OpenOptions::new()
             .set_create(true, true)
             .set_read(true)
