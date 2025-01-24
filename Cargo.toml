@@ -21,7 +21,7 @@ syscalls = { version = "0.6", default-features = false }
 
 axns = { git = "https://github.com/arceos-org/arceos.git", features = ["thread-local"]}
 axfs = { git = "https://github.com/arceos-org/arceos.git" }
-axlog = { path = "./.arceos/modules/axlog" }
+axlog = { path = "./arceos/modules/axlog" }
 axstd = { git = "https://github.com/arceos-org/arceos.git", features = ["paging"] }
 axhal = { git = "https://github.com/arceos-org/arceos.git", features = ["uspace"] }
 axmm = { git = "https://github.com/arceos-org/arceos.git" }
