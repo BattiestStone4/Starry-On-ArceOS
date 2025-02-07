@@ -35,6 +35,10 @@ impl UtsName {
     }
 }
 
+/// uname() returns system information in the structure pointed to by buf.
+///
+/// # Arguments
+/// * `name` - utsname struct address
 pub fn sys_uname(name: *mut UtsName) -> i64 {
     let utsname = unsafe { &mut *name };
     *utsname = UtsName::default();

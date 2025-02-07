@@ -45,7 +45,7 @@ macro_rules! syscall_body {
 
 #[register_trap_handler(SYSCALL)]
 fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
-    time_stat_from_user_to_kernel();
+    time_stat_from_user_to_kernel(); // for time stat
     let ans = match Sysno::from(syscall_num as u32) {
         Sysno::read => sys_read(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
         Sysno::write => sys_write(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _),
@@ -116,6 +116,6 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
             axtask::exit(LinuxError::ENOSYS as _)
         }
     };
-    time_stat_from_kernel_to_user();
+    time_stat_from_kernel_to_user(); // for time stat
     ans
 }

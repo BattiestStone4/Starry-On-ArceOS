@@ -26,18 +26,24 @@ enum ArchPrctlCode {
     SetCpuid = 0x1012,
 }
 
+/// getpid() returns the process ID (PID) of the calling process.
 pub(crate) fn sys_getpid() -> i32 {
     syscall_body!(sys_getpid, {
         Ok(axtask::current().task_ext().proc_id as c_int)
     })
 }
 
+/// getppid() returns the process ID of the parent of the calling process.
 pub(crate) fn sys_getppid() -> i32 {
     syscall_body!(sys_getppid, {
         Ok(axtask::current().task_ext().get_parent() as c_int)
     })
 }
 
+/// exit() terminates the calling process "immediately".
+/// 
+/// # Arguments
+/// * `status` - return as exit status of process
 pub(crate) fn sys_exit(status: i32) -> ! {
     let curr = current();
     let clear_child_tid = curr.task_ext().clear_child_tid() as *mut i32;
@@ -52,14 +58,19 @@ pub(crate) fn sys_exit(status: i32) -> ! {
     axtask::exit(status);
 }
 
+/// This system call terminates all threads in the calling process's thread group.
+///
+/// # Arguments
+/// * `status` - return as exit status of process group
 pub(crate) fn sys_exit_group(status: i32) -> ! {
     warn!("Temporarily replace sys_exit_group with sys_exit");
     axtask::exit(status);
 }
 
-/// To set the clear_child_tid field in the task extended data.
+/// set_tid_address() sets the clear_child_tid value for the calling thread to tidptd.
 ///
-/// The set_tid_address() always succeeds
+/// # Arguments
+/// * `tid_ptd` - calling thread
 pub(crate) fn sys_set_tid_address(tid_ptd: *const i32) -> isize {
     syscall_body!(sys_set_tid_address, {
         let curr = current();

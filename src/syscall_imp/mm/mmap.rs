@@ -58,6 +58,16 @@ bitflags::bitflags! {
     }
 }
 
+/// mmap() creates a new mapping in the virtual address space of the
+/// calling process.
+///
+/// # Arguments
+/// * `addr` - new mapping address
+/// * `length` - mapping length
+/// * `prot` - mapping memory protection
+/// * `flags` - mapping flags
+/// * `fd` - file descriptor
+/// * `offset` - starting offset
 pub(crate) fn sys_mmap(
     mut addr: *mut usize,
     length: usize,
@@ -137,6 +147,13 @@ pub(crate) fn sys_mmap(
     })
 }
 
+/// The munmap() system call deletes the mappings for the specified
+/// address range, and causes further references to addresses within
+/// the range to generate invalid memory references.
+///
+/// # Arguments
+/// * `addr` - mapping address
+/// * `length` - mapping length
 pub(crate) fn sys_munmap(addr: *mut usize, mut length: usize) -> i32 {
     syscall_body!(sys_munmap, {
         let curr = current();

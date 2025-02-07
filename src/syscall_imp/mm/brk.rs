@@ -4,6 +4,11 @@ use crate::syscall_body;
 
 const MAX_HEAP_SIZE: usize = 0x20000;
 
+/// brk() change the location of the program break, which
+/// efines the end of the process's data segment
+///
+/// # Arguments
+/// * `addr` - the end of the data segment
 pub fn sys_brk(addr: usize) -> isize {
     syscall_body!(sys_brk, {
         let current_task = current();

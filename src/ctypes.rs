@@ -3,55 +3,55 @@
 use bitflags::*;
 
 bitflags! {
-    /// 用于 sys_clone 的选项
+    /// for sys_clone
     #[derive(Debug, Clone, Copy)]
     pub struct CloneFlags: u32 {
         /// .
         const CLONE_NEWTIME = 1 << 7;
-        /// 共享地址空间
+        /// share memory space
         const CLONE_VM = 1 << 8;
-        /// 共享文件系统新信息
+        /// share filesystem info
         const CLONE_FS = 1 << 9;
-        /// 共享文件描述符(fd)表
+        /// share fd table
         const CLONE_FILES = 1 << 10;
-        /// 共享信号处理函数
+        /// share signal handler function
         const CLONE_SIGHAND = 1 << 11;
-        /// 创建指向子任务的fd，用于 sys_pidfd_open
+        /// create fd referring to child process, for sys_pidfd_open
         const CLONE_PIDFD = 1 << 12;
-        /// 用于 sys_ptrace
+        /// for sys_ptrace
         const CLONE_PTRACE = 1 << 13;
-        /// 指定父任务创建后立即阻塞，直到子任务退出才继续
+        /// if set, calling process suspended until child releases its virtual memory
         const CLONE_VFORK = 1 << 14;
-        /// 指定子任务的 ppid 为当前任务的 ppid，相当于创建“兄弟”而不是“子女”
+        /// specify ppid of process the same as current
         const CLONE_PARENT = 1 << 15;
-        /// 作为一个“线程”被创建。具体来说，它同 CLONE_PARENT 一样设置 ppid，且不可被 wait
+        /// created as "thread"
         const CLONE_THREAD = 1 << 16;
-        /// 子任务使用新的命名空间。目前还未用到
+        /// cloned child use new mount namespace
         const CLONE_NEWNS = 1 << 17;
-        /// 子任务共享同一组信号量。用于 sys_semop
+        /// share the same semaphore, for sys_semop
         const CLONE_SYSVSEM = 1 << 18;
-        /// 要求设置 tls
+        /// set tls
         const CLONE_SETTLS = 1 << 19;
-        /// 要求在父任务的一个地址写入子任务的 tid
+        /// store child thread id at the location pointed by parent_tid
         const CLONE_PARENT_SETTID = 1 << 20;
-        /// 要求将子任务的一个地址清零。这个地址会被记录下来，当子任务退出时会触发此处的 futex
+        /// zero the child thread ID
         const CLONE_CHILD_CLEARTID = 1 << 21;
-        /// 历史遗留的 flag，现在按 linux 要求应忽略
+        /// historical flag, defined but ignored
         const CLONE_DETACHED = 1 << 22;
-        /// 与 sys_ptrace 相关，目前未用到
+        /// related to sys_trace, not used
         const CLONE_UNTRACED = 1 << 23;
-        /// 要求在子任务的一个地址写入子任务的 tid
+        /// store child thread id at the location pointed by child_tid
         const CLONE_CHILD_SETTID = 1 << 24;
         /// New pid namespace.
         const CLONE_NEWPID = 1 << 29;
     }
 
     pub struct WaitFlags: u32 {
-        /// 不挂起当前进程，直接返回
+        /// return immediately if no child has exited.
         const WNOHANG = 1 << 0;
-        /// 报告已执行结束的用户进程的状态
+        /// return if a child has stopped
         const WIMTRACED = 1 << 1;
-        /// 报告还未结束的用户进程的状态
+        /// return if a stopped child has been resumed by delivery of SIGCONT.
         const WCONTINUED = 1 << 3;
         /// Wait for any child
         const WALL = 1 << 30;
@@ -64,22 +64,22 @@ bitflags! {
 /// sys_wait4 的返回值
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WaitStatus {
-    /// 子任务正常退出
+    /// exited
     Exited,
-    /// 子任务正在运行
+    /// running
     Running,
-    /// 找不到对应的子任务
+    /// not exist
     NotExist,
 }
 #[repr(C)]
 pub struct Tms {
-    /// 进程用户态执行时间，单位为us
+    /// user time in us
     pub tms_utime: usize,
-    /// 进程内核态执行时间，单位为us
+    /// system time in us
     pub tms_stime: usize,
-    /// 子进程用户态执行时间和，单位为us
+    /// user time of children in us
     pub tms_cutime: usize,
-    /// 子进程内核态执行时间和，单位为us
+    /// system time of children in us
     pub tms_cstime: usize,
 }
 
@@ -88,13 +88,13 @@ numeric_enum_macro::numeric_enum! {
     #[allow(non_camel_case_types)]
     #[derive(Eq, PartialEq, Debug, Clone, Copy)]
     pub enum TimerType {
-    /// 表示目前没有任何计时器(不在linux规范中，是os自己规定的)
+    /// NO TIMER
     NONE = -1,
-    /// 统计系统实际运行时间
+    /// SYSTEM TIMER
     REAL = 0,
-    /// 统计用户态运行时间
+    /// USER TIMER
     VIRTUAL = 1,
-    /// 统计进程的所有用户态/内核态运行时间
+    /// ALL TIMER
     PROF = 2,
     }
 }
@@ -108,12 +108,19 @@ impl From<usize> for TimerType {
     }
 }
 pub struct TimeStat {
+    /// user time in ns
     utime_ns: usize,
+    /// system time in ns
     stime_ns: usize,
+    /// user timestamp
     user_timestamp: usize,
+    /// kernel timestamp
     kernel_timestamp: usize,
+    /// timer type
     timer_type: TimerType,
+    /// timer interval in ns
     timer_interval_ns: usize,
+    /// timer remained time in ns
     timer_remained_ns: usize,
 }
 

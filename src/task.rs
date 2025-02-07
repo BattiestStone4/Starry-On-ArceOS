@@ -66,6 +66,7 @@ impl TaskExt {
     ) -> AxResult<u64> {
         let _clone_flags = CloneFlags::from_bits((flags & !0x3f) as u32).unwrap();
         
+        // create a new task for clone
         let mut new_task = TaskInner::new(
             || {
                 let curr = axtask::current();
@@ -88,6 +89,7 @@ impl TaskExt {
         let new_aspace = current_aspace.clone_or_err()?;
         new_task.ctx_mut().set_page_table_root(new_aspace.page_table_root());
 
+        // read trapframe and set return code
         let mut trap_frame = 
             read_trapframe_from_kstack(current_task.get_kernel_stack_top().unwrap());
         trap_frame.set_ret_code(0);
@@ -108,8 +110,8 @@ impl TaskExt {
         );
         new_task_ext.ns_init_new();
         new_task.init_task_ext(new_task_ext);
-        let new_task_ref = axtask::spawn_task(new_task);
-        current_task.task_ext().children.lock().push(new_task_ref);
+        let new_task_ref = axtask::spawn_task(new_task); //let new task run
+        current_task.task_ext().children.lock().push(new_task_ref); //and maintain child-parent process relationship
 
         Ok(return_id)
         

@@ -2,13 +2,18 @@ use alloc::{boxed::Box, string::ToString};
 use arceos_posix_api::AT_FDCWD;
 use axerrno::AxError;
 
-// mount file system.
-// special: mount device
-// dir: mount point
-// fstype: file system type
-// flags: mount argument
-// data: argument in string form, can be NULL.
-
+/// mount() attaches the filesystem specified by source (which is
+/// often a pathname referring to a device, but can also be the
+/// pathname of a directory or file, or a dummy string) to the
+/// location (a directory or file) specified by the pathname in
+/// target.
+///
+/// # Arguments
+/// * `special` - pathname referring to a device
+/// * `dir` - target pathname
+/// * `fstype` - file system type
+/// * `flags` - mount flags
+/// * `data` - a string of comma-separated options understood by this filesystem
 pub(crate) fn sys_mount(
     special: *const u8, 
     dir: *const u8, 
@@ -49,9 +54,12 @@ pub(crate) fn sys_mount(
     }
 }
 
-// unmount file system.
-// input: unmount directory, unmount argument
-// return 0 if success, else return -1.
+/// umount() remove the attachment of the (topmost)
+/// filesystem mounted on target.
+///
+/// # Arguments
+/// * `special` - pathname the file system mounting on
+/// * `flags` - mount flags
 pub(crate) fn sys_umount2(special: *const u8, _flags: i32) -> i64 {
     let result = (|| {
         let special_path = arceos_posix_api::handle_file_path(AT_FDCWD, Some(special), false)

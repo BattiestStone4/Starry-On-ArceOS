@@ -11,10 +11,10 @@ use crate::syscall_body;
 /// of special files.
 ///
 /// # Arguments
-/// * `fd` - The file descriptor
-/// * `op` - The request code. It is of type unsigned long in glibc and BSD,
+/// * `fd` - file descriptor
+/// * `op` - request code. It is of type unsigned long in glibc and BSD,
 /// and of type int in musl and other UNIX systems.
-/// * `argp` - The argument to the request. It is a pointer to a memory location
+/// * `argp` - argument to the request. It is a pointer to a memory location
 pub(crate) fn sys_ioctl(_fd: i32, _op: usize, _argp: *mut c_void) -> i32 {
     syscall_body!(sys_ioctl, {
         warn!("Unimplemented syscall: SYS_IOCTL");
@@ -22,6 +22,11 @@ pub(crate) fn sys_ioctl(_fd: i32, _op: usize, _argp: *mut c_void) -> i32 {
     })
 }
 
+/// chdir() changes the current working directory of the calling
+/// process to the directory specified in path.
+///
+/// # Arguments
+/// * `path` - path name
 pub(crate) fn sys_chdir(path: *const c_char) -> c_int {
     let path = match arceos_posix_api::char_ptr_to_str(path) {
         Ok(path) => path,
@@ -39,6 +44,12 @@ pub(crate) fn sys_chdir(path: *const c_char) -> c_int {
         })
 }
 
+/// mkdir() attempts to create a directory named pathname.
+///
+/// # Arguments
+/// * `dirfd` - directory file descriptor
+/// * `path` - path name
+/// * `mode` - directory mode
 pub(crate) fn sys_mkdirat(dirfd: i32, path: *const c_char, mode: u32) -> c_int {
     let path = match arceos_posix_api::char_ptr_to_str(path) {
         Ok(path) => path,
@@ -68,10 +79,15 @@ pub(crate) fn sys_mkdirat(dirfd: i32, path: *const c_char, mode: u32) -> c_int {
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct DirEnt {
-    d_ino: u64, 
+    // file serial number
+    d_ino: u64,
+    // offset to next dirent
     d_off: i64,
+    // current length of dirent
     d_reclen: u16,
+    // dirent type
     d_type: u8,
+    // filename string of entry
     d_name: [u8; 0],
 }
 
@@ -79,14 +95,23 @@ struct DirEnt {
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
 pub enum FileType {
+    // unknown
     Unknown = 0,
+    // named pipe
     Fifo = 1,
+    // character device
     Chr = 2,
+    // directory
     Dir = 4,
+    // block device
     Blk = 6,
+    // regular file
     Reg = 8,
+    // symbolic link
     Lnk = 10,
+    // socket
     Socket = 12,
+    // whiteout
     Wht = 14,
 }
 
@@ -122,7 +147,7 @@ impl DirEnt {
     }
 }
 
-// Directory buffer for getdents64 syscall
+/// Directory buffer for getdents64 syscall
 struct DirBuffer<'a> {
     buf: &'a mut [u8],
     offset: usize,
@@ -155,6 +180,15 @@ impl<'a> DirBuffer<'a> {
     }
 }
 
+/// The getdents64() system call reads several linux_dirent structures
+/// from the directory referred to by the open file descriptor fd into
+/// the buffer pointed to by dirp.  The argument count specifies the
+/// size of that buffer.
+///
+/// # Arguments
+/// * `fd` - file descriptor
+/// * `buf` - buffer
+/// * `len` - length of buffer
 pub(crate) fn sys_getdents64(fd: i32, buf: *mut c_void, len: usize) -> isize {
     if len < DirEnt::FIXED_SIZE {
         warn!("Buffer size too small: {len}");
@@ -231,11 +265,15 @@ pub(crate) fn sys_getdents64(fd: i32, buf: *mut c_void, len: usize) -> isize {
         .unwrap_or(-1)
 }
 
-/// create a link from new_path to old_path
-/// old_path: old file path
-/// new_path: new file path
-/// flags: link flags
-/// return value: return 0 when success, else return -1.
+/// linkat() creates a new link (also known as a hard link) to an
+/// existing file.
+///
+/// # Arguments
+/// * `old_dirfd` - old directory file descriptor
+/// * `old_path` - old file path
+/// * `new_dirfd` - new directory file descriptor
+/// * `new_path` - new file path
+/// * `flags` - link flags
 pub(crate) fn sys_linkat(
     old_dirfd: i32,
     old_path: *const u8,
@@ -266,11 +304,12 @@ pub(crate) fn sys_linkat(
         .unwrap_or(-1)
 }
 
-/// remove link of specific file (can be used to delete file)
-/// dir_fd: the directory of link to be removed
-/// path: the name of link to be removed
-/// flags: can be 0 or AT_REMOVEDIR
-/// return 0 when success, else return -1
+/// unlink() deletes a name from the filesystem.
+///
+/// # Arguments
+/// * `dir_fd` - directory file descriptor
+/// * `path` - file path
+/// * `flags` - unlink flags
 pub fn sys_unlinkat(dir_fd: isize, path: *const u8, flags: usize) -> isize {
     const AT_REMOVEDIR: usize = 0x200;
 
@@ -305,41 +344,41 @@ pub fn sys_unlinkat(dir_fd: isize, path: *const u8, flags: usize) -> isize {
 #[repr(C)]
 #[cfg(not(target_arch = "x86_64"))]
 pub struct Kstat {
-    /// 设备
+    /// device
     pub st_dev: u64,
-    /// inode 编号
+    /// inode number
     pub st_ino: u64,
-    /// 文件类型
+    /// file type and mode
     pub st_mode: u32,
-    /// 硬链接数
+    /// number of hard links
     pub st_nlink: u32,
-    /// 用户id
+    /// user id
     pub st_uid: u32,
-    /// 用户组id
+    /// group id
     pub st_gid: u32,
-    /// 设备号
+    /// device id
     pub st_rdev: u64,
     /// padding
     pub _pad0: u64,
-    /// 文件大小
+    /// total size
     pub st_size: u64,
-    /// 块大小
+    /// block size
     pub st_blksize: u32,
     /// padding
     pub _pad1: u32,
-    /// 块个数
+    /// number of blocks
     pub st_blocks: u64,
-    /// 最后一次访问时间(秒)
+    /// time of last access (sec)
     pub st_atime_sec: isize,
-    /// 最后一次访问时间(纳秒)
+    /// time of last access (nsec)
     pub st_atime_nsec: isize,
-    /// 最后一次修改时间(秒)
+    /// time of last modification (sec)
     pub st_mtime_sec: isize,
-    /// 最后一次修改时间(纳秒)
+    /// time of last modification (nsec)
     pub st_mtime_nsec: isize,
-    /// 最后一次改变状态时间(秒)
+    /// time of last status change (sec)
     pub st_ctime_sec: isize,
-    /// 最后一次改变状态时间(纳秒)
+    /// time of last status change (nsec)
     pub st_ctime_nsec: isize,
 }
 
@@ -368,6 +407,11 @@ impl From<arceos_posix_api::ctypes::stat> for Kstat {
     }
 }
 
+/// fstat() retrieves information about the file that is specified by the file descriptor fd.
+///
+/// # Arguments
+/// * `fd` - file descriptor
+/// * `kstatbuf` - stat buffer
 pub(crate) fn sys_fstat(fd: i32, kstatbuf: *mut c_void) -> i32 {
     let kstatbuf = kstatbuf as *mut Kstat;
     let mut statbuf = arceos_posix_api::ctypes::stat::default();

@@ -5,6 +5,17 @@ use axtask::{current, TaskExtRef};
 
 use crate::{ctypes::{WaitFlags, WaitStatus}, syscall_body, task::wait_pid};
 
+/// clone() system calls create a new ("child") process.
+/// By contrast with fork(2), these system calls provide more precise
+/// control over what pieces of execution context are shared between
+/// the calling process and the child process.
+/// 
+/// # Arguments
+/// * `flags` - clone flags
+/// * `user_stack` - pointer to lowest byte of stack
+/// * `ptid` - parent thread id
+/// * `tls` - location of new tls
+/// * `ctid` - child thread id
 pub(crate) fn sys_clone(
     flags: usize, 
     user_stack: usize,
@@ -33,6 +44,13 @@ pub(crate) fn sys_clone(
     
 }
 
+/// wait4() system calls are similar to waitpid,
+/// but additionally return resource usage information about the child
+///
+/// # Arguments
+/// * `pid` - process id
+/// * `exit_code_ptr` - exit status
+/// * `option` - wait option flags
 pub(crate) fn sys_wait4(pid: i32, exit_code_ptr: *mut i32, option: u32) -> isize {
     let option_flag = WaitFlags::from_bits(option as u32).unwrap();
     syscall_body!(sys_wait4, {
