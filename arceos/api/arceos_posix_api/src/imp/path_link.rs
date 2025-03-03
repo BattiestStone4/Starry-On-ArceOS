@@ -391,3 +391,33 @@ fn adjust_path_suffix(mut path: String, force_dir: bool) -> String {
     }
     path
 }
+
+/// # Safety
+///
+/// The caller must ensure that the pointer is valid and points to a valid C string.
+/// The string must be null-terminated.
+pub unsafe fn get_str_len(start: *const u8) -> usize {
+    let mut ptr = start as usize;
+    while *(ptr as *const u8) != 0 {
+        ptr += 1;
+    }
+    ptr - start as usize
+}
+
+/// # Safety
+///
+/// The caller must ensure that the pointer is valid and points to a valid C string.
+pub unsafe fn raw_ptr_to_ref_str(start: *const u8) -> &'static str {
+    let len = unsafe { get_str_len(start) };
+    let slice = unsafe { core::slice::from_raw_parts(start, len) };
+    if let Ok(s) = core::str::from_utf8(slice) {
+        s
+    } else {
+        axlog::error!("not utf8 slice");
+        for c in slice {
+            axlog::error!("{c} ");
+        }
+        axlog::error!("");
+        ""
+    }
+}

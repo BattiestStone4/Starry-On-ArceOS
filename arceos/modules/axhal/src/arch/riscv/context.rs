@@ -95,6 +95,16 @@ impl TrapFrame {
     pub fn set_user_sp(&mut self, user_sp: usize) {
         self.regs.sp = user_sp;
     }
+    
+    /// get sp
+    pub fn get_sp(&self) -> usize {
+        self.regs.sp
+    }
+    
+    /// set pc
+    pub fn set_pc(&mut self, pc: usize) {
+        self.sepc = pc;
+    }
 }
 
 /// Context to enter user space.

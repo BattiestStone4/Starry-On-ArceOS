@@ -1,16 +1,17 @@
 use alloc::{string::{String, ToString}, sync::Arc, vec::Vec};
+use alloc::collections::BTreeMap;
 use arceos_posix_api::FD_TABLE;
 use axerrno::{AxError, AxResult};
 use axfs::{CURRENT_DIR, CURRENT_DIR_PATH};
 use core::{cell::UnsafeCell, sync::atomic::{AtomicU64, Ordering}};
 
-use axhal::{arch::{TrapFrame, UspaceContext}, time::{monotonic_time_nanos, NANOS_PER_MICROS, NANOS_PER_SEC}};
+use axhal::{arch::{TrapFrame, UspaceContext}, mem::VirtAddr, time::{monotonic_time_nanos, NANOS_PER_MICROS, NANOS_PER_SEC}};
 use axmm::AddrSpace;
 use axns::{AxNamespace, AxNamespaceIf};
 use axsync::Mutex;
 use axtask::{current, AxTaskRef, TaskExtRef, TaskInner};
 use crate::ctypes::{CloneFlags, WaitStatus, TimeStat};
-
+use crate::signal::SignalModule;
 
 /// Task extended data for the monolithic kernel.
 pub struct TaskExt {
@@ -38,6 +39,8 @@ pub struct TaskExt {
     pub heap_bottom: AtomicU64,
     /// The user heap top
     pub heap_top: AtomicU64,
+    /// The signal module
+    pub signal_modules: Mutex<BTreeMap<u64, SignalModule>>
 }
 
 impl TaskExt {
@@ -53,6 +56,7 @@ impl TaskExt {
             time: TimeStat::new().into(),
             heap_bottom: AtomicU64::new(heap_bottom),
             heap_top: AtomicU64::new(heap_bottom),
+            signal_modules: Mutex::new(BTreeMap::new()),
         }
     }
     
@@ -215,6 +219,9 @@ pub fn spawn_user_task(aspace: Arc<Mutex<AddrSpace>>, uctx: UspaceContext, heap_
         .set_page_table_root(aspace.lock().page_table_root());
     task.init_task_ext(TaskExt::new(task.id().as_u64() as usize, uctx, aspace, heap_bottom));
     task.task_ext().ns_init_new();
+    task.task_ext().signal_modules
+        .lock()
+        .insert(task.id().as_u64(), SignalModule::init_signal(None));
     axtask::spawn_task(task)
 }
 
@@ -287,7 +294,7 @@ pub fn wait_pid(pid: i32, exit_code_ptr: *mut i32) -> Result<u64, WaitStatus> {
     Err(answer_status)
 }
 
-pub fn exec(program_name: &str) -> AxResult<()> {
+pub fn exec(program_name: &str, args: Vec<String>, envs: &Vec<String>) -> AxResult<()> {
     let current_task = current();
 
     let program_name = program_name.to_string();
@@ -301,7 +308,7 @@ pub fn exec(program_name: &str) -> AxResult<()> {
     aspace.unmap_user_areas()?;
     axhal::arch::flush_tlb(None);
 
-    let (entry_point, user_stack_base) = crate::mm::map_elf_sections(&program_name, &mut aspace)
+    let (entry_point, user_stack_base) = crate::mm::map_elf_sections(&program_name, &mut aspace, args, envs)
         .map_err(|_| {
             error!("Failed to load app {}", program_name);
             AxError::NotFound
@@ -310,6 +317,7 @@ pub fn exec(program_name: &str) -> AxResult<()> {
 
     let task_ext = unsafe { &mut *(current_task.task_ext_ptr() as *mut TaskExt) };
     task_ext.uctx = UspaceContext::new(entry_point.as_usize(), user_stack_base, 0);
+    task_ext.signal_modules.lock().insert(current_task.id().as_u64(), SignalModule::init_signal(None));
 
     unsafe {
         task_ext

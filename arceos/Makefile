@@ -142,7 +142,7 @@ LD := rust-lld -flavor gnu
 
 OBJDUMP ?= rust-objdump -d --print-imm-hex --x86-asm-syntax=intel
 OBJCOPY ?= rust-objcopy --binary-architecture=$(ARCH)
-GDB ?= gdb-multiarch
+GDB ?= gdb
 
 # Paths
 OUT_DIR ?= $(APP)

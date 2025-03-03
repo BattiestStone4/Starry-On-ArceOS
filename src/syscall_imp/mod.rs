@@ -4,6 +4,7 @@ mod task;
 mod time;
 mod pipe;
 mod system_info;
+pub mod signal;
 
 use axerrno::LinuxError;
 use axhal::{
@@ -12,7 +13,7 @@ use axhal::{
 };
 use syscalls::Sysno;
 use system_info::sys_uname;
-
+use crate::syscall_imp::signal::sys_rtsigprocmask;
 use crate::task::{time_stat_from_kernel_to_user, time_stat_from_user_to_kernel};
 
 use self::fs::*;
@@ -95,6 +96,7 @@ fn handle_syscall(tf: &TrapFrame, syscall_num: usize) -> isize {
         Sysno::munmap => sys_munmap(tf.arg0() as _, tf.arg1() as _) as _,
         Sysno::times => sys_times(tf.arg0() as _) as _,
         Sysno::brk => sys_brk(tf.arg0() as _) as _,
+        Sysno::rt_sigprocmask => sys_rtsigprocmask(tf.arg0() as _, tf.arg1() as _, tf.arg2() as _, tf.arg3() as _) as _,
         #[cfg(target_arch = "x86_64")]
         Sysno::arch_prctl => sys_arch_prctl(tf.arg0() as _, tf.arg1() as _),
         Sysno::set_tid_address => sys_set_tid_address(tf.arg0() as _),

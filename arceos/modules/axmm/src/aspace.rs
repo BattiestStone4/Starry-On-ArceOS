@@ -3,7 +3,7 @@ use core::fmt;
 use alloc::vec;
 use axerrno::{ax_err, AxError, AxResult};
 use axhal::mem::phys_to_virt;
-use axhal::paging::{MappingFlags, PageTable};
+use axhal::paging::{MappingFlags, PageTable, PagingError};
 use memory_addr::{
     is_aligned_4k, MemoryAddr, PageIter4K, PhysAddr, VirtAddr, VirtAddrRange, PAGE_SIZE_4K,
 };

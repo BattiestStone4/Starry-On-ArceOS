@@ -1,5 +1,7 @@
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use core::ffi::c_char;
-
+use arceos_posix_api::raw_ptr_to_ref_str;
 use axstd::thread::yield_now;
 use axtask::{current, TaskExtRef};
 
@@ -83,7 +85,9 @@ pub(crate) fn sys_wait4(pid: i32, exit_code_ptr: *mut i32, option: u32) -> isize
     })
 }
 
-pub fn sys_execve(path: *const c_char, argv: *const usize, envp: *const usize) -> isize {
+pub fn sys_execve(path: *const c_char, mut argv: *const usize, mut envp: *const usize) -> isize {
+    let mut args_vec = Vec::new();
+    let mut envs_vec = Vec::new();
     let path_str = match arceos_posix_api::char_ptr_to_str(path) {
         Ok(path) => path,
         Err(err) => {
@@ -101,14 +105,34 @@ pub fn sys_execve(path: *const c_char, argv: *const usize, envp: *const usize) -
     let envp_valid = unsafe { envp.is_null() || *envp == 0 };
 
     if !argv_valid {
-        info!("argv is not supported");
+        loop {
+            let args_str_ptr = unsafe { *argv };
+            if args_str_ptr == 0 {
+                break;
+            }
+            args_vec.push(unsafe { raw_ptr_to_ref_str(args_str_ptr as *const u8) }.to_string());
+            unsafe {
+                argv = argv.add(1);
+            }
+        }
+        info!("args: {:?}", args_vec);
     }
 
     if !envp_valid {
-        info!("envp is not supported");
+        loop {
+            let envp_str_ptr = unsafe { *envp };
+            if envp_str_ptr == 0 {
+                break;
+            }
+            envs_vec.push(unsafe { raw_ptr_to_ref_str(envp_str_ptr as *const u8) }.to_string());
+            unsafe {
+                envp = envp.add(1);
+            }
+        }
+        info!("envs: {:?}", envs_vec);
     }
-
-    match crate::task::exec(path_str) {
+    
+    match crate::task::exec(path_str, args_vec, &envs_vec) {
         Ok(_) => {
             unreachable!("exec should not return");
         },

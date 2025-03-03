@@ -3,8 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 
-char *environ_[2] = {"dummy", NULL};
-char **environ = (char **)environ_;
+//char *environ_[2] = {"dummy", NULL};
+//char **environ = (char **)environ_;
 
 char *getenv(const char *name)
 {

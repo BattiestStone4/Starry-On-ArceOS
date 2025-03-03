@@ -1,5 +1,6 @@
-use alloc::{string::ToString, vec};
-
+use alloc::string::ToString;
+use alloc::string::String;
+use alloc::vec::Vec;
 use axerrno::AxResult;
 use axhal::{
     paging::MappingFlags,
@@ -17,16 +18,16 @@ use crate::{config, loader};
 /// - The first return value is the entry point of the user app.
 /// - The second return value is the top of the user stack.
 /// - The third return value is the address space of the user app.
-pub fn load_user_app(app_name: &str) -> AxResult<(VirtAddr, VirtAddr, AddrSpace)> {
+pub fn load_user_app(app_name: &str, args: Vec<String>, envs: &Vec<String>) -> AxResult<(VirtAddr, VirtAddr, AddrSpace)> {
     let mut uspace = axmm::new_user_aspace(
         VirtAddr::from_usize(config::USER_SPACE_BASE),
         config::USER_SPACE_SIZE,
     )?;
-    let (entry, ustack_pointer) = map_elf_sections(app_name, &mut uspace)?;
+    let (entry, ustack_pointer) = map_elf_sections(app_name, &mut uspace, args, envs)?;
     Ok((entry, ustack_pointer, uspace))
 }
 
-pub fn map_elf_sections(app_name: &str, uspace: &mut AddrSpace) -> Result<(VirtAddr, VirtAddr), axerrno::AxError> {
+pub fn map_elf_sections(app_name: &str, uspace: &mut AddrSpace, mut args: Vec<String>, envs: &Vec<String>) -> Result<(VirtAddr, VirtAddr), axerrno::AxError> {
     let elf_info = loader::load_elf(app_name, uspace.base());
     for segement in elf_info.segments {
         debug!(
@@ -57,15 +58,16 @@ pub fn map_elf_sections(app_name: &str, uspace: &mut AddrSpace) -> Result<(VirtA
         "Mapping user stack: {:#x?} -> {:#x?}",
         ustack_start, ustack_end
     );
-    let mut args = vec![app_name.to_string()];
     if ["mount", "umount"].contains(&app_name) {
         args.push("/vda2".to_string());
     }
 
+    info!("load app args: {:?}", args);
+
     // FIXME: Add more arguments and environment variables
     let (stack_data, ustack_pointer) = kernel_elf_parser::get_app_stack_region(
         &args,
-        &[],
+        envs,
         &elf_info.auxv,
         ustack_start,
         ustack_size,

@@ -39,6 +39,7 @@ impl FD_TABLE {
 }
 
 pub fn get_file_like(fd: c_int) -> LinuxResult<Arc<dyn FileLike>> {
+    info!("fd: {}", fd);
     FD_TABLE
         .read()
         .get(fd as usize)
